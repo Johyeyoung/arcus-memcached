@@ -32,7 +32,6 @@
 #include "memcached/config_parser.h"
 #ifdef ENABLE_PERSISTENCE
 #include "cmdlogmgr.h"
-
 #endif
 
 /*
@@ -108,6 +107,7 @@ default_get_info(ENGINE_HANDLE* handle)
     return &get_handle(handle)->info.engine_info;
 }
 
+
 static int check_configuration(struct engine_config *conf)
 {
     if (conf->max_list_size < MINIMUM_MAX_COLL_SIZE ||
@@ -153,7 +153,7 @@ static int check_configuration(struct engine_config *conf)
         return -1;
     }
 #ifdef ENABLE_PERSISTENCE
-    if (conf->use_persistence) {
+    if (conf->use_persistence) {  // 경로들이 적절하게 설정되어있는지 확인만 
         /* check data & logs directory path. */
         if (conf->data_path == NULL) {
             logger->log(EXTENSION_LOG_WARNING, NULL,
@@ -180,13 +180,16 @@ static int check_configuration(struct engine_config *conf)
     }
 #endif
 
-    return 0;
+    return 0;   
 }
+
+
+
 
 static ENGINE_ERROR_CODE
 initialize_configuration(struct default_engine *se, const char *cfg_str)
 {
-    struct config_item items[] = {
+    struct config_item items[] = {  // [key, datatype, value]구조체 배열 선언하기 
         { .key = "verbose",           .datatype = DT_SIZE,   .value.dt_size = &se->config.verbose },
         { .key = "use_cas",           .datatype = DT_BOOL,   .value.dt_bool = &se->config.use_cas },
         { .key = "eviction",          .datatype = DT_BOOL,   .value.dt_bool = &se->config.evict_to_free },
@@ -220,7 +223,8 @@ initialize_configuration(struct default_engine *se, const char *cfg_str)
         { .key = "vb0",               .datatype = DT_BOOL,   .value.dt_bool = &se->config.vb0 },
         { .key = "config_file",       .datatype = DT_CONFIGFILE },
         { .key = NULL}
-    };
+    };   
+
 
     se->config.vb0 = true;
 
@@ -230,8 +234,8 @@ initialize_configuration(struct default_engine *se, const char *cfg_str)
             return ENGINE_FAILED;
         }
     }
-    /* check engine config */
-    if (check_configuration(&se->config) < 0) {
+    /* check engine config */             // 앞서 config 파일check 에서 에러가 발생했으면 거르기
+    if (check_configuration(&se->config) < 0) {  
         return ENGINE_FAILED;
     }
 
@@ -1112,29 +1116,22 @@ static void stats_vbucket(struct default_engine *engine,
 }
 
 
+
+
 static void persistence_stats(struct engine_config *conf, 
                               ADD_STAT add_stat, const void *cookie)
 {
-/*
-<stats persistence (config에 있는 내용을 읽어오기)>
-
-    STAT use_persistence on
-    STAT data_path /home/test/arcus/data/ARCUS-DB 
-    STAT logs_path /home/test/arcus/data/ARCUS-DB
-    STAT async_logging false
-    STAT chkpt_interval_pct_snapshot 100
-    STAT chkpt_interval_min_logsize 256
-
-    STAT recovery_elapsed_time_sec 5                 (복구하는데 걸린 시간)
-    STAT last_chkpt_in_progress true                 (이전 체크포인트 수행 여부)
-    STAT last_chkpt_failure_count 0                  (이전 체크포인트 수행 실패 횟수)
-    STAT last_chkpt_start_time 20201222182102        (이전 체크포인트 시작 시간(unit : absolute timestamp))
-    STAT last_chkpt_elapsed_time_sec 8               (이전 체크포인트 수행하는데 걸린 시간(unit : seconds))
-    STAT last_chkpt_snapshot_filesize_bytes 423333   (이전 체크포인트 스냅샷 파일 크기(unit : bytes))
-    STAT current_command_log_filesize_bytes 65555    (현재 명령 로그 파일 크기(unit : bytes))
-    END
-*/
+        
     if (conf->use_persistence){
+        /*
+        <stats persistence (config에 있는 내용을 읽어오기)>
+        STAT use_persistence on
+        STAT data_path /home/test/arcus/data/ARCUS-DB 
+        STAT logs_path /home/test/arcus/data/ARCUS-DB
+        STAT async_logging false
+        STAT chkpt_interval_pct_snapshot 100
+        STAT chkpt_interval_min_logsize 256
+        */
         add_statistics(cookie, add_stat, NULL, -1, "use_persistence", "%s", conf->use_persistence? "on" : "off");
         add_statistics(cookie, add_stat, NULL, -1, "data_path", "%s", conf->data_path);
         add_statistics(cookie, add_stat, NULL, -1, "logs_path", "%s", conf->logs_path);
@@ -1142,14 +1139,28 @@ static void persistence_stats(struct engine_config *conf,
         add_statistics(cookie, add_stat, NULL, -1, "chkpt_interval_pct_snapshot", "%u", conf->chkpt_interval_pct_snapshot);
         add_statistics(cookie, add_stat, NULL, -1, "chkpt_interval_min_logsize", "%u", conf->chkpt_interval_min_logsize);
         
-        add_statistics(cookie, add_stat, NULL, -1, "recovery_elapsed_time_sec", "%u", );
-        add_statistics(cookie, add_stat, NULL, -1, "last_chkpt_in_progress", "%s", conf->);
-        add_statistics(cookie, add_stat, NULL, -1, "last_chkpt_failure_count", "%d", conf->);
-        add_statistics(cookie, add_stat, NULL, -1, "last_chkpt_start_time", "%u", conf->);
-        add_statistics(cookie, add_stat, NULL, -1, "last_chkpt_elapsed_time_sec", "%u", conf->);
-        add_statistics(cookie, add_stat, NULL, -1, "last_chkpt_snapshot_filesize_bytes", "%u", conf->);
-        add_statistics(cookie, add_stat, NULL, -1, "current_command_log_filesize_bytes", "%u", conf->);
-    }else {
+
+        /*
+        STAT recovery_elapsed_time_sec 5                 (복구하는데 걸린 시간)
+        STAT last_chkpt_in_progress true                 (이전 체크포인트 수행 여부)
+        STAT last_chkpt_failure_count 0                  (이전 체크포인트 수행 실패 횟수)
+        STAT last_chkpt_start_time 20201222182102        (이전 체크포인트 시작 시간(unit : absolute timestamp))
+        STAT last_chkpt_elapsed_time_sec 8               (이전 체크포인트 수행하는데 걸린 시간(unit : seconds))
+        STAT last_chkpt_snapshot_filesize_bytes 423333   (이전 체크포인트 스냅샷 파일 크기(unit : bytes))
+        STAT current_command_log_filesize_bytes 65555    (현재 명령 로그 파일 크기(unit : bytes))
+        END */
+        chkpt_last stats_ps = get_chkpt_last(); // 구조체를 반환하는 함수를 cmdlogmgr.h에서 가져오기
+        add_statistics(cookie, add_stat, NULL, -1, "recovery_elapsed_time_sec", "%u", stats_ps.recovery_elapsed_time_sec);
+        add_statistics(cookie, add_stat, NULL, -1, "last_chkpt_in_progress", "%s", stats_ps.last_chkpt_in_progress);
+        add_statistics(cookie, add_stat, NULL, -1, "last_chkpt_failure_count", "%d", stats_ps.failure_count);
+        add_statistics(cookie, add_stat, NULL, -1, "last_chkpt_start_time", "%u", stats_ps.last_chkpt_start_time);
+        add_statistics(cookie, add_stat, NULL, -1, "last_chkpt_elapsed_time_sec", "%u", stats_ps.last_chkpt_elapsed_time_sec);
+        add_statistics(cookie, add_stat, NULL, -1, "last_chkpt_snapshot_filesize_bytes", "%u", stats_ps.last_chkpt_snapshot_filesize_bytes);
+        add_statistics(cookie, add_stat, NULL, -1, "current_command_log_filesize_bytes", "%u", stats_ps.current_command_log_filesize_bytes);
+    }
+    
+    
+    else {
         add_statistics(cookie, add_stat, NULL, -1, "use_persistence", "%s", conf->use_persistence? "on" : "off");
     }
 }
@@ -1184,7 +1195,7 @@ default_get_stats(ENGINE_HANDLE* handle, const void* cookie,
     else if (strncmp(stat_key, "dump", 4) == 0) {
         item_dump_stats(engine, add_stat, cookie);
     }
-    else if (strncmp(stat_key, "persistence", 5) == 0) {
+    else if (strncmp(stat_key, "persistence", 11) == 0) {
         persistence_stats(engine, add_stat, cookie);
     }
     else {
@@ -1192,6 +1203,8 @@ default_get_stats(ENGINE_HANDLE* handle, const void* cookie,
     }
     return ret;
 }
+
+
 
 static void
 default_reset_stats(ENGINE_HANDLE* handle, const void *cookie)
