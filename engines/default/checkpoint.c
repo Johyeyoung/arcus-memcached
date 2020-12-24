@@ -63,8 +63,45 @@ typedef struct _chkpt_st {
 static EXTENSION_LOGGER_DESCRIPTOR* logger = NULL;
 static chkpt_st chkpt_anch;
 
+#ifdef STATS_PERSISTENCE
+static chkpt_last chkpt_last_anch; // checkpoint state 조회
+
+// struct의 최근 상태를 반환하는 함수 
+typedef struct _chkpt_last {
+    int      recovery_elapsed_time_sec;
+    bool     last_chkpt_in_progress;
+    int      last_chkpt_failure_count;
+    int64_t  last_chkpt_start_time;
+    int      last_chkpt_elapsed_time_sec;
+    size_t   last_chkpt_snapshot_filesize_bytes;            /* last snapshot log file size */
+    size_t   current_command_log_filesize_bytes;            /* current_command_log file size */
+} chkpt_last;
+
+static ENGINE_ERROR_CODE chkpt_last_init(){  // 초기화하는 함수 (근데 언제 해주지? --- mgr에서 )
+    chkpt_last_anch.recovery_elapsed_time_sec = -1;
+    chkpt_last_anch.last_chkpt_in_progress = false;
+    chkpt_last_anch.last_chkpt_failure_count = 0;
+    chkpt_last_anch.last_chkpt_start_time = -1;
+    chkpt_last_anch.last_chkpt_elapsed_time_sec = -1;
+    //chkpt_last_anch.last_chkpt_snapshot_filesize_bytes   
+    //chkpt_last_anch.current_command_log_filesize_bytes 
+}
+
+static chkpt_last get_chkpt_last(){  // 최근 상태의 정보를 구조체로 전달하는 함수
+    chkpt_last *cs = &chkpt_last_anch; // 최근 상태를 담은 구조체 주소를 가져와서
+    chkpt_last cs_obj;
+    memcpy(&cs_obj, cs, sizeof(chkpt_last))
+    cs_obj.last_chkpt_snapshot_filesize_bytes = chkpt_anch.lastsize; // snapshot의 파일사이즈를 가져와서 마지막으로 변경
+    chkpt_last_anch.current_command_log_filesize_bytes = cmdlog_file_getsize(); // 명령로그는 체크포인트와 관련이 없으므로 사용자가 요구하는 그 순간의 시간을 요청해야한다 
+    return cs_obj;
+}
+#endif
+
+
+
+
 static int64_t getnowtime(void)
-{
+{   
     char buf[20] = {0};
     int64_t ltime;
     time_t clock = time(0);
@@ -75,6 +112,7 @@ static int64_t getnowtime(void)
     sscanf(buf, "%" SCNd64, &ltime);
     return ltime;
 }
+
 
 /* Delete all backup files except last checkpoint file. */
 static bool do_chkpt_sweep_files(chkpt_st *cs)
@@ -226,9 +264,9 @@ static void do_chkpt_thread_wakeup(chkpt_st *cs)
 }
 
 /* FIXME : Error handling(Disk I/O etc) */
-static int do_checkpoint(chkpt_st *cs)
+static int do_checkpoint(chkpt_st *cs)   //  실제로 체크포인트를 수행하는 부분 
 {
-    int64_t newtime = getnowtime();
+    int64_t newtime = getnowtime(); //checkpoint 시작 시간
     int ret;
 
     if ((ret = do_chkpt_create_files(cs, newtime)) != 0) {
@@ -242,8 +280,13 @@ static int do_checkpoint(chkpt_st *cs)
                                   cs->snapshot_path,
                                   &cs->lastsize) == ENGINE_SUCCESS) {
             ret = CHKPT_SUCCESS;
-            cs->prevtime = cs->lasttime;
+            cs->prevtime = cs->lasttime; 
             cs->lasttime = newtime;
+
+            #ifdef STATS_PERSISTENCE
+            chkpt_last_anch.last_chkpt_start_time =  cs->prevtime;  // 이전 체크포인트 시작 시간을 업데이트하는 부분--혜영
+            #endif 
+
             /* We will remove the previous checkpoint files
              * after those files are closed by log file module.
              * See cmdlog_file_dual_write_finished().
@@ -263,6 +306,13 @@ static int do_checkpoint(chkpt_st *cs)
             ret = CHKPT_ERROR_FILE_REMOVE;
         }
     }
+
+    #ifdef STATS_PERSISTENCE
+    int64_t endtime = getnowtime(); // checkpoint 끝나는 시간 
+    hkpt_last_anch.last_chkpt_elapsed_time_sec = starttime - endtime;
+    #endif
+
+    
     return ret;
 }
 
@@ -273,6 +323,9 @@ static bool do_checkpoint_needed(chkpt_st *cs)
     size_t cmdlog_file_size   = cmdlog_file_getsize();
     size_t min_logsize        = config->chkpt_interval_min_logsize;
     int    pct_snapshot       = config->chkpt_interval_pct_snapshot;
+
+
+
 
     if ((cmdlog_file_size < min_logsize) ||
         (cmdlog_file_size < (snapshot_file_size + (snapshot_file_size*(pct_snapshot*0.01))))) {
@@ -295,18 +348,19 @@ static void* chkpt_thread_main(void* arg)
 
         if (cs->reqstop) {
             logger->log(EXTENSION_LOG_INFO, NULL, "Checkpoint thread recognized stop request.\n");
+            chkpt_last_anch.last_chkpt_in_progress = false; // Checkpoint가 중단되었으므로 수행 여부를 변경한다. --혜영
             break;
         }
 
         if (need_remove) {
-            if (++flsweep_time >= CHKPT_SWEEP_INTERVAL) {
+            if (++flsweep_time >= CHKPT_SWEEP_INTERVAL) {  // 5초는 넘지않음
                 /* sweep checkpoint files in each CHKPT_SWEEP_INTERVAL second */
                 flsweep_time = 0;
                 need_remove = !do_chkpt_sweep_files(cs);
             }
         }
 
-        if (elapsed_time >= CHKPT_CHECK_INTERVAL) {
+        if (elapsed_time >= CHKPT_CHECK_INTERVAL) {  
             /* check previous checkpoint is completed. */
             if (cs->prevtime != -1) {
                 if (cmdlog_file_dual_write_finished()) {
@@ -317,17 +371,19 @@ static void* chkpt_thread_main(void* arg)
                     cs->prevtime = -1;
                 }
             }
-            if (cs->prevtime == -1 && do_checkpoint_needed(cs)) {
+            if (cs->prevtime == -1 && do_checkpoint_needed(cs)) { // 이전 체크포인트가 끝났고 체크포인트가 필요한지 계속 감시
                 logger->log(EXTENSION_LOG_INFO, NULL, "Checkpoint started.\n");
-                ret = do_checkpoint(cs);
+                ret = do_checkpoint(cs);  
                 if (ret == CHKPT_SUCCESS) {
                     logger->log(EXTENSION_LOG_INFO, NULL, "Checkpoint has been done.\n");
                 } else {
+                    chkpt_last_anch.last_chkpt_failure_count += 1;  // 실패횟수를 카운트하는 변수 --- 혜영
                     logger->log(EXTENSION_LOG_WARNING, NULL, "Failed in checkpoint. "
                                 "Retry checkpoint in 5 seconds.\n");
                     if (ret == CHKPT_ERROR_FILE_REMOVE) need_remove = true;
                 }
             }
+            chkpt_last_anch.last_chkpt_elapsed_time_sec = elapsed_time;  // 초기화되기 전에 수행하는데 걸리는 시간 기록하기 --- 혜영
             elapsed_time = 0;
         }
     }
@@ -346,9 +402,13 @@ static int chkptsnapshotfilter(const struct dirent *ent)
     return (strncmp(ent->d_name, CHKPT_SNAPSHOT_PREFIX, strlen(CHKPT_SNAPSHOT_PREFIX)) == 0);
 }
 
-int chkpt_recovery_analysis(void)
+int chkpt_recovery_analysis(void) // 이 부분이 재구동시 복구하는 부분 
 {
-    chkpt_st *cs = &chkpt_anch;
+
+    size_t elapsed_time = 0; /* unit : second */ // 복구시 걸리는 경과시간을 확인해주기 ---혜영
+
+
+    chkpt_st *cs = &chkpt_anch; // 구조체 포인터 선언으로 하는 이유는 현재 상태를 조회해야하므로? 
     /* Sort snapshot files in alphabetical order. */
     struct dirent **snapshotlist;
     int snapshot_count = scandir(cs->data_path, &snapshotlist, chkptsnapshotfilter, alphasort);
@@ -477,6 +537,10 @@ void chkpt_thread_stop(void)
     }
     while (chkpt_anch.running == RUNNING_STARTED) {
         chkpt_anch.reqstop = true;
+
+        chkpt_last_anch.last_chkpt_in_progress = true; // Checkpoint가 시작되므로 수행여부를 변경한다.
+
+
         do_chkpt_thread_wakeup(&chkpt_anch);
         usleep(5000); /* sleep 5ms */
     }
