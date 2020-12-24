@@ -32,6 +32,7 @@
 #include "memcached/config_parser.h"
 #ifdef ENABLE_PERSISTENCE
 #include "cmdlogmgr.h"
+
 #endif
 
 /*
@@ -1110,6 +1111,51 @@ static void stats_vbucket(struct default_engine *engine,
     }
 }
 
+
+static void persistence_stats(struct engine_config *conf, 
+                              ADD_STAT add_stat, const void *cookie)
+{
+/*
+<stats persistence (config에 있는 내용을 읽어오기)>
+
+    STAT use_persistence on
+    STAT data_path /home/test/arcus/data/ARCUS-DB 
+    STAT logs_path /home/test/arcus/data/ARCUS-DB
+    STAT async_logging false
+    STAT chkpt_interval_pct_snapshot 100
+    STAT chkpt_interval_min_logsize 256
+
+    STAT recovery_elapsed_time_sec 5                 (복구하는데 걸린 시간)
+    STAT last_chkpt_in_progress true                 (이전 체크포인트 수행 여부)
+    STAT last_chkpt_failure_count 0                  (이전 체크포인트 수행 실패 횟수)
+    STAT last_chkpt_start_time 20201222182102        (이전 체크포인트 시작 시간(unit : absolute timestamp))
+    STAT last_chkpt_elapsed_time_sec 8               (이전 체크포인트 수행하는데 걸린 시간(unit : seconds))
+    STAT last_chkpt_snapshot_filesize_bytes 423333   (이전 체크포인트 스냅샷 파일 크기(unit : bytes))
+    STAT current_command_log_filesize_bytes 65555    (현재 명령 로그 파일 크기(unit : bytes))
+    END
+*/
+    if (conf->use_persistence){
+        add_statistics(cookie, add_stat, NULL, -1, "use_persistence", "%s", conf->use_persistence? "on" : "off");
+        add_statistics(cookie, add_stat, NULL, -1, "data_path", "%s", conf->data_path);
+        add_statistics(cookie, add_stat, NULL, -1, "logs_path", "%s", conf->logs_path);
+        add_statistics(cookie, add_stat, NULL, -1, "async_logging", "%s", conf->async_logging? "true" : "false");
+        add_statistics(cookie, add_stat, NULL, -1, "chkpt_interval_pct_snapshot", "%u", conf->chkpt_interval_pct_snapshot);
+        add_statistics(cookie, add_stat, NULL, -1, "chkpt_interval_min_logsize", "%u", conf->chkpt_interval_min_logsize);
+        
+        add_statistics(cookie, add_stat, NULL, -1, "recovery_elapsed_time_sec", "%u", );
+        add_statistics(cookie, add_stat, NULL, -1, "last_chkpt_in_progress", "%s", conf->);
+        add_statistics(cookie, add_stat, NULL, -1, "last_chkpt_failure_count", "%d", conf->);
+        add_statistics(cookie, add_stat, NULL, -1, "last_chkpt_start_time", "%u", conf->);
+        add_statistics(cookie, add_stat, NULL, -1, "last_chkpt_elapsed_time_sec", "%u", conf->);
+        add_statistics(cookie, add_stat, NULL, -1, "last_chkpt_snapshot_filesize_bytes", "%u", conf->);
+        add_statistics(cookie, add_stat, NULL, -1, "current_command_log_filesize_bytes", "%u", conf->);
+    }else {
+        add_statistics(cookie, add_stat, NULL, -1, "use_persistence", "%s", conf->use_persistence? "on" : "off");
+    }
+}
+
+
+
 static ENGINE_ERROR_CODE
 default_get_stats(ENGINE_HANDLE* handle, const void* cookie,
                   const char* stat_key, int nkey, ADD_STAT add_stat)
@@ -1137,6 +1183,9 @@ default_get_stats(ENGINE_HANDLE* handle, const void* cookie,
     }
     else if (strncmp(stat_key, "dump", 4) == 0) {
         item_dump_stats(engine, add_stat, cookie);
+    }
+    else if (strncmp(stat_key, "persistence", 5) == 0) {
+        persistence_stats(engine, add_stat, cookie);
     }
     else {
         ret = ENGINE_KEY_ENOENT;
