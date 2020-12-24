@@ -25,12 +25,13 @@
 #ifdef __WIN32__
 struct iovec {
     size_t iov_len;
-    void* iov_base;
+    void* iov_base;s
 };
 #else
 #include <sys/uio.h>
 #endif
 
+#define STATS_PERSISTENCE 1
 #define PROXY_SUPPORT
 //#define NEW_PREFIX_STATS_MANAGEMENT
 #define SUPPORT_BOP_MGET
