@@ -36,7 +36,7 @@ int64_t chkpt_get_lasttime(void);
 
 # struct를 초기화하고 현재 상태를 반환하는 함수
 void chkpt_last_init();  // 초기화하는 함수 
-chkpt_st get_chkpt_last();
+chkpt_last get_chkpt_last();
 
 
 #endif
