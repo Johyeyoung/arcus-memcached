@@ -1138,6 +1138,13 @@ default_get_stats(ENGINE_HANDLE* handle, const void* cookie,
     else if (strncmp(stat_key, "dump", 4) == 0) {
         item_dump_stats(engine, add_stat, cookie);
     }
+#ifdef STATS_PERSISTENCE
+#ifdef ENABLE_PERSISTENCE
+    else if (strncmp(stat_key, "persistence", 11) == 0) {
+        chkpt_persistence_stats(engine, add_stat, cookie);
+    }
+#endif
+#endif
     else {
         ret = ENGINE_KEY_ENOENT;
     }
