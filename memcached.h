@@ -242,6 +242,13 @@ struct settings {
     uint32_t max_element_bytes;  /* Maximum element bytes of collections */
     uint32_t scrub_count;        /* count of scrubbing items at each try */
     int topkeys;            /* Number of top keys to track */
+#ifdef ENABLE_PERSISTENCE
+#ifdef PERSISTENCE_CONFIG
+    size_t chkpt_interval_pct_snapshot;
+    size_t chkpt_interval_min_logsize;
+    bool async_logging;
+#endif
+#endif
     struct {
         EXTENSION_DAEMON_DESCRIPTOR *daemons;
         EXTENSION_LOGGER_DESCRIPTOR *logger;

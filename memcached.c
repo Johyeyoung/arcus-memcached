@@ -8790,7 +8790,100 @@ static void process_memlimit_command(conn *c, token_t *tokens, const size_t ntok
         out_string(c, "CLIENT_ERROR bad command line format");
     }
 }
+#ifdef ENABLE_PERSISTENCE
+#ifdef PERSISTENCE_CONFIG
 
+static void process_chkpt_interval_pct_snapshot_command(conn *c, token_t *tokens, const size_t ntokens)
+{
+    assert(c != NULL);
+    char *config_key = tokens[SUBCOMMAND_TOKEN].value;
+    char *config_val = tokens[SUBCOMMAND_TOKEN+1].value;
+    unsigned int chkpt_interval_pct_snapshot;
+
+    if (ntokens == 3) {
+        char buf[50];
+        sprintf(buf, "chkpt_interval_pct_snapshot %u\r\nEND", (int)settings.chkpt_interval_pct_snapshot);
+        out_string(c, buf);
+    } else if (ntokens == 4 && safe_strtoul(config_val, &chkpt_interval_pct_snapshot)) {
+        ENGINE_ERROR_CODE ret;
+        size_t new_chkpt_interval_pct_snapshot = (size_t)chkpt_interval_pct_snapshot;
+        LOCK_SETTING();
+        ret = mc_engine.v1->set_config(mc_engine.v0, c, config_key, (void*)&new_chkpt_interval_pct_snapshot);
+        if (ret == ENGINE_SUCCESS) {
+            settings.chkpt_interval_pct_snapshot = new_chkpt_interval_pct_snapshot;
+        }
+        UNLOCK_SETTING();
+        if (ret == ENGINE_SUCCESS)        out_string(c, "END");
+        else if (ret == ENGINE_EBADVALUE) out_string(c, "CLIENT_ERROR bad value");
+        else handle_unexpected_errorcode_ascii(c, __func__, ret);
+    } else {
+        print_invalid_command(c, tokens, ntokens);
+        out_string(c, "CLIENT_ERROR bad command line format");
+    }
+}
+
+static void process_chkpt_interval_min_logsize_command(conn *c, token_t *tokens, const size_t ntokens)
+{
+    assert(c != NULL);
+    char *config_key = tokens[SUBCOMMAND_TOKEN].value;
+    char *config_val = tokens[SUBCOMMAND_TOKEN+1].value;
+    unsigned int chkpt_interval_min_logsize;
+
+    if (ntokens == 3) {
+        char buf[50];
+        sprintf(buf, "chkpt_interval_min_logsize %u\r\nEND", (int)settings.chkpt_interval_min_logsize);
+        out_string(c, buf);
+    } else if (ntokens == 4 && safe_strtoul(config_val, &chkpt_interval_min_logsize)) {
+        ENGINE_ERROR_CODE ret;
+        size_t new_chkpt_interval_min_logsize = (size_t)chkpt_interval_min_logsize;
+        LOCK_SETTING();
+        ret = mc_engine.v1->set_config(mc_engine.v0, c, config_key, (void*)&new_chkpt_interval_min_logsize);
+        if (ret == ENGINE_SUCCESS) {
+            settings.chkpt_interval_min_logsize = new_chkpt_interval_min_logsize;
+        }
+        UNLOCK_SETTING();
+        if (ret == ENGINE_SUCCESS)        out_string(c, "END");
+        else if (ret == ENGINE_EBADVALUE) out_string(c, "CLIENT_ERROR bad value");
+        else handle_unexpected_errorcode_ascii(c, __func__, ret);
+    } else {
+        print_invalid_command(c, tokens, ntokens);
+        out_string(c, "CLIENT_ERROR bad command line format");
+    }
+}
+
+static void process_async_logging_command(conn *c, token_t *tokens, const size_t ntokens)
+{
+    assert(c != NULL);
+    char *config_key = tokens[SUBCOMMAND_TOKEN].value;
+    char *config_val = tokens[SUBCOMMAND_TOKEN+1].value;
+
+    if (ntokens == 3) {
+        char buf[50];
+        sprintf(buf, "async_logging %s\r\nEND", settings.async_logging ? "on" : "off");
+        out_string(c, buf);
+    } else if (ntokens == 4 && (strcmp(config_val, "on") == 0 || strcmp(config_val, "off") == 0)) {
+        ENGINE_ERROR_CODE ret;
+        bool new_async_logging;
+        if (strcmp(config_val, "on") == 0)
+            new_async_logging = true;
+        else if (strcmp(config_val, "off") == 0)
+            new_async_logging = false;
+        LOCK_SETTING();
+        ret = mc_engine.v1->set_config(mc_engine.v0, c, config_key, (void*)&new_async_logging);
+        if (ret == ENGINE_SUCCESS) {
+            settings.async_logging = new_async_logging;
+        }
+        UNLOCK_SETTING();
+        if (ret == ENGINE_SUCCESS)        out_string(c, "END");
+        else if (ret == ENGINE_EBADVALUE) out_string(c, "CLIENT_ERROR bad value");
+        else handle_unexpected_errorcode_ascii(c, __func__, ret);
+    } else {
+        print_invalid_command(c, tokens, ntokens);
+        out_string(c, "CLIENT_ERROR bad command line format");
+    }
+}
+#endif
+#endif
 #ifdef ENABLE_STICKY_ITEM
 static void process_stickylimit_command(conn *c, token_t *tokens, const size_t ntokens)
 {
@@ -9018,6 +9111,19 @@ static void process_config_command(conn *c, token_t *tokens, const size_t ntoken
     else if (strcmp(config_key, "verbosity") == 0) {
         process_verbosity_command(c, tokens, ntokens);
     }
+#ifdef ENABLE_PERSISTENCE
+#ifdef PERSISTENCE_CONFIG
+    else if (strcmp(config_key, "chkpt_interval_pct_snapshot") == 0) {
+        process_chkpt_interval_pct_snapshot_command(c, tokens, ntokens);
+    }
+     else if (strcmp(config_key, "chkpt_interval_min_logsize") == 0) {
+        process_chkpt_interval_min_logsize_command(c, tokens, ntokens);
+    }
+    else if (strcmp(config_key, "async_logging") == 0) {
+        process_async_logging_command(c, tokens, ntokens);
+    }
+#endif
+#endif
     else {
         print_invalid_command(c, tokens, ntokens);
         out_string(c, "CLIENT_ERROR bad command line format");
@@ -9220,6 +9326,9 @@ static void process_help_command(conn *c, token_t *tokens, const size_t ntokens)
         "\t" "stats dump\\r\\n" "\n"
         "\t" "stats cachedump <slab_clsid> <limit> [forward|backward [sticky]]\\r\\n" "\n"
         "\t" "stats reset\\r\\n" "\n"
+#ifdef ENABLE_PERSISTENCE
+        "\t" "stats persistence\\r\\n" "\n"
+#endif
 #ifdef COMMAND_LOGGING
         "\n"
         "\t" "cmdlog start [<file_path>]\\r\\n" "\n"
@@ -9260,6 +9369,13 @@ static void process_help_command(conn *c, token_t *tokens, const size_t ntokens)
         "\t" "config hbtimeout [<hbtimeout>]\\r\\n" "\n"
         "\t" "config hbfailstop [<hbfailstop>]\\r\\n" "\n"
         "\t" "config zkfailstop [on|off]\\r\\n" "\n"
+#endif
+#ifdef ENABLE_PERSISTENCE
+#ifdef PERSISTENCE_CONFIG
+        "\t" "chkpt_interval_pct_snapshot [<percentage(%)>]\r\n"
+        "\t" "chkpt_interval_min_logsize [<minsize(MB)>]\r\n"
+        "\t" "async_logging [on|off]\r\n"
+#endif
 #endif
         );
     } else {
@@ -14600,6 +14716,12 @@ static void settings_reload_engine_config(void)
     uint32_t maxsize;
     uint32_t maxbytes;
     uint32_t scrubcount;
+#ifdef ENABLE_PERSISTENCE
+#ifdef PERSISTENCE_CONFIG
+    uint32_t chkptsize;
+    bool async_logging;
+#endif
+#endif
 
     /* Following settings are loaded by getting engine config */
 
@@ -14627,6 +14749,22 @@ static void settings_reload_engine_config(void)
     if (ret == ENGINE_SUCCESS) {
         settings.scrub_count = scrubcount;
     }
+#ifdef ENABLE_PERSISTENCE
+#ifdef PERSISTENCE_CONFIG
+    ret = mc_engine.v1->get_config(mc_engine.v0, NULL, "chkpt_interval_pct_snapshot", (void*)&chkptsize);
+    if (ret == ENGINE_SUCCESS) {
+        settings.chkpt_interval_pct_snapshot = chkptsize;
+    }
+    ret = mc_engine.v1->get_config(mc_engine.v0, NULL, "chkpt_interval_min_logsize", (void*)&chkptsize);
+    if (ret == ENGINE_SUCCESS) {
+        settings.chkpt_interval_min_logsize = chkptsize/1024/1024;
+    }
+    ret = mc_engine.v1->get_config(mc_engine.v0, NULL, "async_logging", (void*)&async_logging);
+    if (ret == ENGINE_SUCCESS) {
+        settings.async_logging = async_logging;
+    }
+#endif
+#endif
 }
 
 static void close_listen_sockets(void)
